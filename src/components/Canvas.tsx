@@ -17,6 +17,16 @@ export default function Canvas() {
     null,
   );
 
+  const [viewport, setViewport] = useState({
+    x: 0,
+    y: 0,
+    scale: 1,
+  });
+
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [didPan, setDidPan] = useState(false);
+
   // Configure sensors with drag threshold to prevent drag/click conflict
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -30,10 +40,14 @@ export default function Canvas() {
     const { active, delta } = event;
     const person = people?.find((p) => p._id === active.id);
     if (person) {
+      // Convert screen-space delta to world-space
+      const worldDeltaX = delta.x / viewport.scale;
+      const worldDeltaY = delta.y / viewport.scale;
+
       updatePosition({
         id: person._id,
-        positionX: person.positionX + delta.x,
-        positionY: person.positionY + delta.y,
+        positionX: person.positionX + worldDeltaX,
+        positionY: person.positionY + worldDeltaY,
       });
     }
   };
@@ -79,11 +93,60 @@ export default function Canvas() {
     }
   }, [people, selectedPerson]);
 
-  // Click canvas background to deselect
+  // Click canvas background to deselect (but not after panning)
   const handleCanvasClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && !didPan) {
       setSelectedPerson(null);
     }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    // Start panning on left or middle mouse button on background elements
+    const isBackground =
+      e.target === e.currentTarget || // root canvas
+      target.classList?.contains('viewport-container') || // viewport container
+      target.tagName === 'svg' || // ConnectionsLayer SVG
+      (target.classList?.contains('absolute') && target.classList?.contains('inset-0')); // dot grid
+
+    if ((e.button === 0 || e.button === 1) && isBackground) {
+      e.preventDefault();
+      setIsPanning(true);
+      setDidPan(false);
+      setPanStart({ x: e.clientX - viewport.x, y: e.clientY - viewport.y });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isPanning) {
+      setDidPan(true);
+      setViewport(prev => ({
+        ...prev,
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y
+      }));
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const delta = e.deltaY * 0.001;
+    const newScale = Math.max(0.1, Math.min(3, viewport.scale * (1 + delta)));
+    const scaleRatio = newScale / viewport.scale;
+
+    setViewport({
+      x: mouseX - (mouseX - viewport.x) * scaleRatio,
+      y: mouseY - (mouseY - viewport.y) * scaleRatio,
+      scale: newScale
+    });
   };
 
   if (!people || !connections) {
@@ -98,6 +161,11 @@ export default function Canvas() {
     <div
       className="min-h-screen bg-gradient-to-br from-amber-50 via-stone-50 to-blue-50 overflow-hidden relative"
       onClick={handleCanvasClick}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onWheel={handleWheel}
+      style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
     >
       {/* Subtle dot grid pattern */}
       <div
@@ -109,17 +177,30 @@ export default function Canvas() {
       />
 
       <Toolbar selectedPerson={selectedPerson} />
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <ConnectionsLayer people={people} connections={connections} />
-        {people.map((person) => (
-          <PersonBox
-            key={person._id}
-            person={person}
-            isSelected={selectedPerson === person._id}
-            onConnectionClick={handlePersonClick}
-          />
-        ))}
-      </DndContext>
+
+      {/* Viewport transform container */}
+      <div
+        className="viewport-container"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+          transformOrigin: '0 0',
+          willChange: 'transform',
+        }}
+      >
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+          <ConnectionsLayer people={people} connections={connections} />
+          {people.map((person) => (
+            <PersonBox
+              key={person._id}
+              person={person}
+              isSelected={selectedPerson === person._id}
+              onConnectionClick={handlePersonClick}
+            />
+          ))}
+        </DndContext>
+      </div>
     </div>
   );
 }
