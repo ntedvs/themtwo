@@ -134,18 +134,19 @@ export default function Canvas() {
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    const delta = e.deltaY * 0.001;
+    const newScale = Math.max(0.1, Math.min(3, viewport.scale * (1 + delta)));
+
+    // Zoom toward mouse position
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const delta = e.deltaY * 0.001;
-    const newScale = Math.max(0.1, Math.min(3, viewport.scale * (1 + delta)));
     const scaleRatio = newScale / viewport.scale;
-
     setViewport({
+      scale: newScale,
       x: mouseX - (mouseX - viewport.x) * scaleRatio,
       y: mouseY - (mouseY - viewport.y) * scaleRatio,
-      scale: newScale
     });
   };
 
@@ -177,6 +178,24 @@ export default function Canvas() {
       />
 
       <Toolbar selectedPerson={selectedPerson} />
+
+      {/* Legend */}
+      <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm rounded-lg shadow-sm border border-stone-200/60 px-3 py-2 z-20">
+        <div className="flex flex-col gap-1.5 text-xs text-stone-600">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-0.5 rounded-full bg-gradient-to-r from-pink-300 to-rose-400" />
+            <span>Kissed</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-0.5 rounded-full bg-gradient-to-r from-orange-400 to-red-500" />
+            <span>Fucked</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-0.5 rounded-full bg-gradient-to-r from-purple-400 to-purple-500" />
+            <span>Dated</span>
+          </div>
+        </div>
+      </div>
 
       {/* Viewport transform container */}
       <div

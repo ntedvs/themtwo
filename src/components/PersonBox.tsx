@@ -94,8 +94,8 @@ export default function PersonBox({
       {...listeners}
       {...attributes}
       onClick={handleClick}
-      className={`relative z-10 w-32 bg-white/90 backdrop-blur-sm rounded-xl shadow-md shadow-stone-200/60 border border-stone-200/60 p-4 ${
-        !isDragging ? "transition-all duration-200" : ""
+      className={`relative z-10 w-32 bg-white rounded-xl shadow-md shadow-stone-200/60 border border-stone-200/60 p-4 ${
+        !isDragging ? "transition-shadow transition-transform duration-200" : ""
       } cursor-grab active:cursor-grabbing hover:shadow-lg hover:shadow-stone-300/70 hover:-translate-y-0.5 ${
         isSelected ? "ring-2 ring-coral-400 ring-offset-2 shadow-coral-200" : ""
       } ${

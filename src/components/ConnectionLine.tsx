@@ -7,10 +7,11 @@ interface ConnectionLineProps {
   personB: { positionX: number; positionY: number };
   connectionType: string;
   onToggle: (id: Id<"connections">, currentType: string) => void;
+  isPulsing: boolean;
 }
 
-const BOX_WIDTH = 120;
-const BOX_HEIGHT = 60;
+const BOX_WIDTH = 128; // w-32 = 8rem = 128px
+const BOX_HEIGHT = 80;
 
 function calculateControlPoint(
   x1: number,
@@ -37,9 +38,10 @@ export default function ConnectionLine({
   personB,
   connectionType,
   onToggle,
+  isPulsing,
 }: ConnectionLineProps) {
   const [isHovered, setIsHovered] = useState(false);
-  // Calculate center points of boxes
+  // Calculate center points of boxes in world space
   const x1 = personA.positionX + BOX_WIDTH / 2;
   const y1 = personA.positionY + BOX_HEIGHT / 2;
   const x2 = personB.positionX + BOX_WIDTH / 2;
@@ -50,7 +52,9 @@ export default function ConnectionLine({
   // Color based on connection type
   const strokeColor = connectionType === "kissed"
     ? "url(#gradient-kissed)"
-    : "url(#gradient-fucked)";
+    : connectionType === "fucked"
+    ? "url(#gradient-fucked)"
+    : "url(#gradient-dated)";
 
   return (
     <>
@@ -62,6 +66,10 @@ export default function ConnectionLine({
         <linearGradient id="gradient-fucked" x1="0%" y1="0%" x2="100%" y2="0%">
           <stop offset="0%" style={{ stopColor: "#fb923c", stopOpacity: 0.8 }} />
           <stop offset="100%" style={{ stopColor: "#ef4444", stopOpacity: 0.8 }} />
+        </linearGradient>
+        <linearGradient id="gradient-dated" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" style={{ stopColor: "#c084fc", stopOpacity: 0.8 }} />
+          <stop offset="100%" style={{ stopColor: "#a855f7", stopOpacity: 0.8 }} />
         </linearGradient>
       </defs>
 
@@ -85,10 +93,10 @@ export default function ConnectionLine({
       <path
         d={`M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`}
         stroke={strokeColor}
-        strokeWidth={isHovered ? "5" : "2.5"}
+        strokeWidth={isPulsing ? "10" : isHovered ? "5" : "2.5"}
         fill="none"
         strokeLinecap="round"
-        className="drop-shadow-sm transition-all duration-200 pointer-events-none"
+        className="drop-shadow-sm transition-[stroke-width] duration-200 pointer-events-none"
       />
     </>
   );
