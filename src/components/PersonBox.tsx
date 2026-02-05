@@ -1,14 +1,5 @@
-import { useDraggable } from "@dnd-kit/core"
-import { CSS } from "@dnd-kit/utilities"
 import { useMutation } from "convex/react"
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react"
+import { memo, useCallback, useState } from "react"
 import { api } from "../../convex/_generated/api"
 import type { Id } from "../../convex/_generated/dataModel"
 
@@ -20,63 +11,22 @@ interface PersonBoxProps {
     positionY: number
   }
   isSelected: boolean
+  dragOffset: { x: number; y: number } | null
+  onDragStart: (id: Id<"people">, e: React.MouseEvent) => void
   onConnectionClick: (personId: Id<"people">) => void
 }
 
-export default memo(function PersonBox({
+function PersonBox({
   person,
   isSelected,
+  dragOffset,
+  onDragStart,
   onConnectionClick,
 }: PersonBoxProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(person.name)
-  const [localPosition, setLocalPosition] = useState({
-    x: person.positionX,
-    y: person.positionY,
-  })
   const rename = useMutation(api.people.rename)
   const remove = useMutation(api.people.remove)
-
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: person._id,
-    })
-
-  const lastTransform = useRef<typeof transform>(null)
-  const prevIsDragging = useRef(false)
-
-  // Capture transform while dragging
-  useEffect(() => {
-    if (isDragging && transform) {
-      lastTransform.current = transform
-    }
-  }, [isDragging, transform])
-
-  // When drag ends, optimistically update local position
-  useLayoutEffect(() => {
-    if (prevIsDragging.current && !isDragging && lastTransform.current) {
-      const finalTransform = lastTransform.current
-      setLocalPosition((prev) => ({
-        x: prev.x + finalTransform.x,
-        y: prev.y + finalTransform.y,
-      }))
-      lastTransform.current = null
-    }
-    prevIsDragging.current = isDragging
-  }, [isDragging])
-
-  // Sync with Convex updates
-  useEffect(() => {
-    setLocalPosition({ x: person.positionX, y: person.positionY })
-  }, [person.positionX, person.positionY])
-
-  // Outer div: positioning only, no transitions
-  const positionStyle = {
-    position: "absolute" as const,
-    left: localPosition.x,
-    top: localPosition.y,
-    transform: CSS.Translate.toString(transform),
-  }
 
   const handleSaveName = useCallback(() => {
     if (editName.trim()) {
@@ -96,22 +46,37 @@ export default memo(function PersonBox({
   }, [person._id, person.name, remove])
 
   const handleClick = useCallback(() => {
+    // Skip if we just finished dragging
+    if (dragOffset) return
     onConnectionClick(person._id)
-  }, [onConnectionClick, person._id])
+  }, [onConnectionClick, person._id, dragOffset])
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button === 0) {
+        onDragStart(person._id, e)
+      }
+    },
+    [onDragStart, person._id],
+  )
+
+  const isDragging = dragOffset !== null
+  const x = person.positionX + (dragOffset?.x ?? 0)
+  const y = person.positionY + (dragOffset?.y ?? 0)
 
   return (
-    // Outer: positioning + drag handling, NO transitions
     <div
-      ref={setNodeRef}
-      style={positionStyle}
-      {...listeners}
-      {...attributes}
+      onMouseDown={handleMouseDown}
       onClick={handleClick}
+      style={{
+        position: "absolute",
+        left: x,
+        top: y,
+      }}
       className="relative z-10 cursor-grab active:cursor-grabbing"
     >
-      {/* Inner: visual effects WITH transitions */}
       <div
-        className={`w-32 rounded-xl border border-stone-200/60 bg-white p-4 shadow-md shadow-stone-200/60 transition-[shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-stone-300/70 ${isSelected ? "ring-2 shadow-coral-200 ring-coral-400 ring-offset-2" : ""} ${isDragging ? "scale-105 rotate-2 opacity-60" : ""} `}
+        className={`w-32 rounded-xl border border-stone-200/60 bg-white p-4 shadow-md shadow-stone-200/60 transition-[shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-stone-300/70 ${isSelected ? "ring-2 shadow-coral-200 ring-coral-400 ring-offset-2" : ""} ${isDragging ? "scale-105 rotate-2 opacity-60" : ""}`}
       >
         <div className="flex flex-col gap-2">
           {isEditing ? (
@@ -143,4 +108,6 @@ export default memo(function PersonBox({
       </div>
     </div>
   )
-})
+}
+
+export default memo(PersonBox)

@@ -1,4 +1,4 @@
-import { memo, useState } from "react"
+import { memo, useMemo, useState } from "react"
 import type { Id } from "../../convex/_generated/dataModel"
 
 interface ConnectionLineProps {
@@ -12,6 +12,13 @@ interface ConnectionLineProps {
 
 const BOX_WIDTH = 128 // w-32 = 8rem = 128px
 const BOX_HEIGHT = 80
+
+const GRADIENT_MAP: Record<string, string> = {
+  kissed: "url(#gradient-kissed)",
+  fucked: "url(#gradient-fucked)",
+  talked: "url(#gradient-talked)",
+  dated: "url(#gradient-dated)",
+}
 
 function calculateControlPoint(x1: number, y1: number, x2: number, y2: number) {
   const midX = (x1 + x2) / 2
@@ -36,29 +43,29 @@ export default memo(function ConnectionLine({
   isPulsing,
 }: ConnectionLineProps) {
   const [isHovered, setIsHovered] = useState(false)
-  // Calculate center points of boxes in world space
-  const x1 = personA.positionX + BOX_WIDTH / 2
-  const y1 = personA.positionY + BOX_HEIGHT / 2
-  const x2 = personB.positionX + BOX_WIDTH / 2
-  const y2 = personB.positionY + BOX_HEIGHT / 2
 
-  const { cx, cy } = calculateControlPoint(x1, y1, x2, y2)
+  // Memoize path calculation
+  const pathD = useMemo(() => {
+    const x1 = personA.positionX + BOX_WIDTH / 2
+    const y1 = personA.positionY + BOX_HEIGHT / 2
+    const x2 = personB.positionX + BOX_WIDTH / 2
+    const y2 = personB.positionY + BOX_HEIGHT / 2
+    const { cx, cy } = calculateControlPoint(x1, y1, x2, y2)
+    return `M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`
+  }, [
+    personA.positionX,
+    personA.positionY,
+    personB.positionX,
+    personB.positionY,
+  ])
 
-  // Color based on connection type
-  const strokeColor =
-    connectionType === "kissed"
-      ? "url(#gradient-kissed)"
-      : connectionType === "fucked"
-        ? "url(#gradient-fucked)"
-        : connectionType === "talked"
-          ? "url(#gradient-talked)"
-          : "url(#gradient-dated)"
+  const strokeColor = GRADIENT_MAP[connectionType] ?? GRADIENT_MAP.dated
 
   return (
     <g>
       {/* Invisible wide path for easy clicking/hovering */}
       <path
-        d={`M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`}
+        d={pathD}
         stroke="transparent"
         strokeWidth="20"
         fill="none"
@@ -74,7 +81,7 @@ export default memo(function ConnectionLine({
 
       {/* Visible path with animated width */}
       <path
-        d={`M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`}
+        d={pathD}
         stroke={strokeColor}
         strokeWidth={isPulsing ? "10" : isHovered ? "5" : "2.5"}
         fill="none"

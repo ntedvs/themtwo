@@ -1,10 +1,3 @@
-import {
-  DndContext,
-  type DragEndEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core"
 import { useMutation, useQuery } from "convex/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { api } from "../../convex/_generated/api"
@@ -22,168 +15,172 @@ export default function Canvas() {
   const [selectedPerson, setSelectedPerson] = useState<Id<"people"> | null>(
     null,
   )
+  const validSelectedPerson =
+    selectedPerson && people?.find((p) => p._id === selectedPerson)
+      ? selectedPerson
+      : null
+  const [activeDrag, setActiveDrag] = useState<{
+    id: Id<"people">
+    deltaX: number
+    deltaY: number
+  } | null>(null)
 
-  const [viewport, setViewport] = useState({
-    x: 0,
-    y: 0,
-    scale: 1,
-  })
-
+  // Viewport state (pan & zoom)
+  const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 })
   const [isPanning, setIsPanning] = useState(false)
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 })
-  const [didPan, setDidPan] = useState(false)
+  const panRef = useRef({ startX: 0, startY: 0, didPan: false })
 
-  // Refs for stable callbacks
-  const connectionsRef = useRef(connections)
-  const viewportRef = useRef(viewport)
-  const isPanningRef = useRef(isPanning)
-  const panStartRef = useRef(panStart)
-  const didPanRef = useRef(didPan)
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement
+      const isBackground =
+        e.target === e.currentTarget ||
+        target.classList?.contains("viewport-container") ||
+        target.tagName === "svg" ||
+        (target.classList?.contains("absolute") &&
+          target.classList?.contains("inset-0"))
 
-  useEffect(() => {
-    connectionsRef.current = connections
-  }, [connections])
-  useEffect(() => {
-    viewportRef.current = viewport
-  }, [viewport])
-  useEffect(() => {
-    isPanningRef.current = isPanning
-  }, [isPanning])
-  useEffect(() => {
-    panStartRef.current = panStart
-  }, [panStart])
-  useEffect(() => {
-    didPanRef.current = didPan
-  }, [didPan])
-
-  // Configure sensors with drag threshold to prevent drag/click conflict
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-  )
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, delta } = event
-    const person = people?.find((p) => p._id === active.id)
-    if (person) {
-      // Convert screen-space delta to world-space
-      const worldDeltaX = delta.x / viewport.scale
-      const worldDeltaY = delta.y / viewport.scale
-
-      updatePosition({
-        id: person._id,
-        positionX: person.positionX + worldDeltaX,
-        positionY: person.positionY + worldDeltaY,
-      })
-    }
-  }
-
-  const handlePersonClick = useCallback(
-    (personId: Id<"people">) => {
-      // Click same person = deselect
-      if (selectedPerson === personId) {
-        setSelectedPerson(null)
-        return
+      if ((e.button === 0 || e.button === 1) && isBackground) {
+        e.preventDefault()
+        setIsPanning(true)
+        panRef.current = {
+          startX: e.clientX - viewport.x,
+          startY: e.clientY - viewport.y,
+          didPan: false,
+        }
       }
-
-      // First selection
-      if (!selectedPerson) {
-        setSelectedPerson(personId)
-        return
-      }
-
-      // Check for duplicate connection (use ref to avoid dep on connections array)
-      const existingConnection = connectionsRef.current?.find(
-        (c) =>
-          (c.personAId === selectedPerson && c.personBId === personId) ||
-          (c.personAId === personId && c.personBId === selectedPerson),
-      )
-
-      if (existingConnection) {
-        setSelectedPerson(null)
-        return
-      }
-
-      // Second selection = create connection
-      createConnection({
-        personAId: selectedPerson,
-        personBId: personId,
-        connectionType: "kissed",
-      })
-      setSelectedPerson(null)
     },
-    [selectedPerson, createConnection],
+    [viewport.x, viewport.y],
   )
 
-  // Handle delete of selected person
-  useEffect(() => {
-    if (selectedPerson && !people?.find((p) => p._id === selectedPerson)) {
-      setSelectedPerson(null)
-    }
-  }, [people, selectedPerson])
+  const handleCanvasMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (isPanning) {
+        panRef.current.didPan = true
+        setViewport((v) => ({
+          ...v,
+          x: e.clientX - panRef.current.startX,
+          y: e.clientY - panRef.current.startY,
+        }))
+      }
+    },
+    [isPanning],
+  )
 
-  // Click canvas background to deselect (but not after panning)
-  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget && !didPanRef.current) {
-      setSelectedPerson(null)
-    }
-  }, [])
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement
-    // Start panning on left or middle mouse button on background elements
-    const isBackground =
-      e.target === e.currentTarget || // root canvas
-      target.classList?.contains("viewport-container") || // viewport container
-      target.tagName === "svg" || // ConnectionsLayer SVG
-      (target.classList?.contains("absolute") &&
-        target.classList?.contains("inset-0")) // dot grid
-
-    if ((e.button === 0 || e.button === 1) && isBackground) {
-      e.preventDefault()
-      setIsPanning(true)
-      setDidPan(false)
-      const vp = viewportRef.current
-      setPanStart({ x: e.clientX - vp.x, y: e.clientY - vp.y })
-    }
-  }, [])
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (isPanningRef.current) {
-      setDidPan(true)
-      const ps = panStartRef.current
-      setViewport((prev) => ({
-        ...prev,
-        x: e.clientX - ps.x,
-        y: e.clientY - ps.y,
-      }))
-    }
-  }, [])
-
-  const handleMouseUp = useCallback(() => {
+  const handleCanvasMouseUp = useCallback(() => {
     setIsPanning(false)
   }, [])
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
-    const vp = viewportRef.current
-    const delta = e.deltaY * 0.001
-    const newScale = Math.max(0.1, Math.min(3, vp.scale * (1 + delta)))
-
-    // Zoom toward mouse position
     const rect = e.currentTarget.getBoundingClientRect()
     const mouseX = e.clientX - rect.left
     const mouseY = e.clientY - rect.top
-
-    const scaleRatio = newScale / vp.scale
-    setViewport({
-      scale: newScale,
-      x: mouseX - (mouseX - vp.x) * scaleRatio,
-      y: mouseY - (mouseY - vp.y) * scaleRatio,
+    const delta = e.deltaY * 0.001
+    setViewport((v) => {
+      const newScale = Math.max(0.1, Math.min(3, v.scale * (1 + delta)))
+      const scaleRatio = newScale / v.scale
+      return {
+        scale: newScale,
+        x: mouseX - (mouseX - v.x) * scaleRatio,
+        y: mouseY - (mouseY - v.y) * scaleRatio,
+      }
     })
+  }, [])
+
+  // Drag handling - store scale at drag start so effect doesn't need to track it
+  const dragRef = useRef<{
+    id: Id<"people">
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+    scale: number
+  } | null>(null)
+
+  const handleDragStart = useCallback(
+    (id: Id<"people">, e: React.MouseEvent) => {
+      const person = people?.find((p) => p._id === id)
+      if (!person) return
+      e.stopPropagation()
+      dragRef.current = {
+        id,
+        startX: e.clientX,
+        startY: e.clientY,
+        originX: person.positionX,
+        originY: person.positionY,
+        scale: viewport.scale,
+      }
+    },
+    [people, viewport.scale],
+  )
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return
+      const drag = dragRef.current
+      const deltaX = (e.clientX - drag.startX) / drag.scale
+      const deltaY = (e.clientY - drag.startY) / drag.scale
+      setActiveDrag({ id: drag.id, deltaX, deltaY })
+    }
+
+    const handleMouseUp = async (e: MouseEvent) => {
+      if (!dragRef.current) return
+      const drag = dragRef.current
+      dragRef.current = null
+      // Compute final position from mouse event directly
+      const deltaX = (e.clientX - drag.startX) / drag.scale
+      const deltaY = (e.clientY - drag.startY) / drag.scale
+      // Await mutation so server position updates before we clear the drag offset
+      await updatePosition({
+        id: drag.id,
+        positionX: drag.originX + deltaX,
+        positionY: drag.originY + deltaY,
+      })
+      setActiveDrag(null)
+    }
+
+    window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("mouseup", handleMouseUp)
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mouseup", handleMouseUp)
+    }
+  }, [updatePosition])
+
+  const handlePersonClick = useCallback(
+    (personId: Id<"people">) => {
+      if (validSelectedPerson === personId) {
+        setSelectedPerson(null)
+        return
+      }
+      if (!validSelectedPerson) {
+        setSelectedPerson(personId)
+        return
+      }
+      const existingConnection = connections?.find(
+        (c) =>
+          (c.personAId === validSelectedPerson && c.personBId === personId) ||
+          (c.personAId === personId && c.personBId === validSelectedPerson),
+      )
+      if (existingConnection) {
+        setSelectedPerson(null)
+        return
+      }
+      createConnection({
+        personAId: validSelectedPerson,
+        personBId: personId,
+        connectionType: "kissed",
+      })
+      setSelectedPerson(null)
+    },
+    [validSelectedPerson, connections, createConnection],
+  )
+
+  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
+    if (e.target === e.currentTarget && !panRef.current.didPan) {
+      setSelectedPerson(null)
+    }
   }, [])
 
   if (!people || !connections) {
@@ -200,13 +197,12 @@ export default function Canvas() {
     <div
       className="relative min-h-screen overflow-hidden bg-linear-to-br from-amber-50 via-stone-50 to-blue-50"
       onClick={handleCanvasClick}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
+      onMouseDown={handleCanvasMouseDown}
+      onMouseMove={handleCanvasMouseMove}
+      onMouseUp={handleCanvasMouseUp}
       onWheel={handleWheel}
       style={{ cursor: isPanning ? "grabbing" : "grab" }}
     >
-      {/* Subtle dot grid pattern */}
       <div
         className="absolute inset-0 opacity-30"
         style={{
@@ -216,9 +212,8 @@ export default function Canvas() {
         }}
       />
 
-      <Toolbar selectedPerson={selectedPerson} />
+      <Toolbar selectedPerson={validSelectedPerson} />
 
-      {/* Legend */}
       <div className="absolute bottom-4 left-4 z-20 rounded-lg border border-stone-200/60 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-sm">
         <div className="flex flex-col gap-1.5 text-xs text-stone-600">
           <div className="flex items-center gap-2">
@@ -240,7 +235,6 @@ export default function Canvas() {
         </div>
       </div>
 
-      {/* Viewport transform container */}
       <div
         className="viewport-container"
         style={{
@@ -251,17 +245,25 @@ export default function Canvas() {
           willChange: "transform",
         }}
       >
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <ConnectionsLayer people={people} connections={connections} />
-          {people.map((person) => (
-            <PersonBox
-              key={person._id}
-              person={person}
-              isSelected={selectedPerson === person._id}
-              onConnectionClick={handlePersonClick}
-            />
-          ))}
-        </DndContext>
+        <ConnectionsLayer
+          people={people}
+          connections={connections}
+          activeDrag={activeDrag}
+        />
+        {people.map((person) => (
+          <PersonBox
+            key={person._id}
+            person={person}
+            isSelected={validSelectedPerson === person._id}
+            dragOffset={
+              activeDrag?.id === person._id
+                ? { x: activeDrag.deltaX, y: activeDrag.deltaY }
+                : null
+            }
+            onDragStart={handleDragStart}
+            onConnectionClick={handlePersonClick}
+          />
+        ))}
       </div>
     </div>
   )
