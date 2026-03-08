@@ -17,14 +17,43 @@ export const get = query({
 export const create = mutation({
   args: {
     name: v.string(),
-    positionX: v.number(),
-    positionY: v.number(),
   },
   handler: async (ctx, args) => {
+    const existing = await ctx.db.query("people").collect();
+    const occupied = existing.map((p) => ({ x: p.positionX, y: p.positionY }));
+
+    const minDist = 180; // minimum distance between node centers
+    let positionX = 0;
+    let positionY = 0;
+    let placed = false;
+
+    // Try random positions, checking for overlap
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const cx = Math.random() * 500 + 100;
+      const cy = Math.random() * 400 + 100;
+      const tooClose = occupied.some(
+        (o) => Math.hypot(o.x - cx, o.y - cy) < minDist,
+      );
+      if (!tooClose) {
+        positionX = cx;
+        positionY = cy;
+        placed = true;
+        break;
+      }
+    }
+
+    // If no non-overlapping spot found, place in a grid extension
+    if (!placed) {
+      const cols = Math.ceil(Math.sqrt(existing.length + 1));
+      const idx = existing.length;
+      positionX = 100 + (idx % cols) * 200;
+      positionY = 100 + Math.floor(idx / cols) * 200;
+    }
+
     return await ctx.db.insert("people", {
       name: args.name,
-      positionX: args.positionX,
-      positionY: args.positionY,
+      positionX,
+      positionY,
     });
   },
 });

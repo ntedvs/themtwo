@@ -18,8 +18,6 @@ export default memo(function Toolbar({ selectedPerson }: ToolbarProps) {
           .trim()
           .toLowerCase()
           .replace(/\b\w/g, (c) => c.toUpperCase()),
-        positionX: Math.random() * 500 + 100,
-        positionY: Math.random() * 400 + 100,
       })
       setNewName("")
     }
